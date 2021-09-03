@@ -26,6 +26,7 @@ app.get('/faucet/', async function(req, res) {
 
     const customHttpProvider = new ethers.providers.JsonRpcProvider(networkUrl);
 
+    // get balance
     const balance = await customHttpProvider.getBalance(recipient.address);
 
     const result = {
@@ -48,6 +49,7 @@ app.post('/faucet', async function(req, res) {
     const mnemonicWallet = ethers.Wallet.fromMnemonic(mnemonic).connect(customHttpProvider);
     const sendAccount = mnemonicWallet.getAddress();
 
+    // prepare transaction
     const tx = {
         from: sendAccount,
         to: recipient.address,
@@ -56,9 +58,9 @@ app.post('/faucet', async function(req, res) {
         gasLimit: ethers.utils.hexlify(100000), // 100000
     };
 
+    // send transaction
     const transaction = await mnemonicWallet.sendTransaction(tx);
 
-    // output the book to the console for debugging
     console.log(transaction);
 
     res.send('Ela is successful send');
