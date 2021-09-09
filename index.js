@@ -37,17 +37,26 @@ app.use(express.urlencoded({
     address: 0x..123
 }*/
 app.get('/faucet/', async function(req, res) {
-    const recipient = req.body;
+    const requestBody = req.body;
 
-    const customHttpProvider = new ethers.providers.JsonRpcProvider(networkUrlElastos);
+    mongoClient.connect();
+    //console.log('Connected successfully to server');
+    
+    const mongoDb = mongoClient.db(dbName);
+    const mongoCollection = mongoDb.collection(collectionName);
 
-    // get balance
-    const balance = await customHttpProvider.getBalance(recipient.address);
-
-    const result = {
-        "address": recipient.address,
-        "balance": balance.toString()
-    };
+    // find is this address use faucet
+    const mongoCollectionFind = await mongoCollection.findOne( { address: { $eq: requestBody.address } } );
+    //console.log(mongoCollectionFind);
+    if (mongoCollectionFind == null) {
+        var result = {
+            "has_use_faucet": false
+        };
+    } else {
+        var result = {
+            "has_use_faucet": true
+        };
+    }
 
     res.json(result);
 });
