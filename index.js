@@ -93,7 +93,7 @@ app.post('/faucet', async function(req, res) {
     //console.log(transactionInput);
 
     // check confirmations number
-    if (transactionInput.confirmations >= 700) {
+    if (transactionInput.confirmations >= 500) {
         res.status(400);
         res.send("There is more then 500 confirmations on this transaction");
         return;
