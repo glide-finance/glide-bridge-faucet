@@ -92,6 +92,13 @@ app.post('/faucet', async function(req, res) {
     }
     //console.log(transactionInput);
 
+    // check confirmations number
+    if (transactionInput.confirmations >= 700) {
+        res.status(400);
+        res.send("There is more then 500 confirmations on this transaction");
+        return;
+    }
+
     // get input data for transaction
     const decodedInputData = interfaceERC677_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
     if (decodedInputData == null) {
