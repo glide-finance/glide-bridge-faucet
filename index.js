@@ -3,11 +3,12 @@ const cors = require('cors');
 const ethers = require("ethers");
 const secrets = require("./secrets.json");
 const ERC677_ABI = require("./ABI/ERC677_ABI.json");
+const AMB_NATIVE_ERC_ABI = require("./ABI/AMB_NATIVE_ERC_ABI.json");
 
 const { MongoClient } = require('mongodb');
 
 const app = express();
-const port = 3000;
+const port = 3001;
 
 const mnemonic = secrets.mnemonic;
 
@@ -16,6 +17,7 @@ const networkUrlHuobi = "https://http-mainnet-node.huobichain.com"; //  "https:/
 const networkUrlElastos = "https://api.elastos.io/eth";
 
 const interfaceERC677_ABI = new ethers.utils.Interface(ERC677_ABI);
+const interfaceAMB_NATIVE_ERC_ABI = new ethers.utils.Interface(AMB_NATIVE_ERC_ABI);
 
 // Connection URL
 const mongoUrl = "mongodb://localhost:27017";
@@ -36,9 +38,8 @@ app.use(express.urlencoded({
 {
     address: 0x..123
 }*/
-app.get('/faucet/', async function(req, res) {
-    const requestBody = req.body;
-
+app.get('/faucet/:address', async function(req, res) {
+    const requestParams = req.params;
     mongoClient.connect();
     //console.log('Connected successfully to server');
     
@@ -46,7 +47,7 @@ app.get('/faucet/', async function(req, res) {
     const mongoCollection = mongoDb.collection(collectionName);
 
     // find is this address use faucet
-    const mongoCollectionFind = await mongoCollection.findOne( { address: { $eq: requestBody.address } } );
+    const mongoCollectionFind = await mongoCollection.findOne( { address: { $eq: requestParams.address } } );
     //console.log(mongoCollectionFind);
     if (mongoCollectionFind == null) {
         var result = {
@@ -64,8 +65,9 @@ app.get('/faucet/', async function(req, res) {
 /* format for body
 {
     txID: "0x0af252de1e65ad697e4a86c75b68b8dfc9b17d8f646fd39e28e6d132e367b2e6",
-    chainID: 120, // 1 - eth, 120 - huobi
-    address: "0x..123"
+    chainID: 128, // 1 - eth, 128 - huobi
+    address: "0x..123",
+    isToken: false/true
 }
 */
 app.post('/faucet', async function(req, res) {
@@ -76,16 +78,26 @@ app.post('/faucet', async function(req, res) {
     if (requestBody && requestBody.chainID) {
         if (requestBody.chainID == 1) {
             networkUrlSender = networkUrlEthereum;
-        } else if (requestBody.chainID == 120) {
+        } else if (requestBody.chainID == 128) {
             networkUrlSender = networkUrlHuobi;
         } else {
             res.status(400);
-            res.send("This chainID is not allowed for send from faucet");
+            res.send(JSON.stringify({
+                error: {
+                    code: 1,
+                    message: "This chainID is not allowed for send from faucet"
+                }
+            }));
             return;
         }
     } else {
         res.status(400);
-        res.send("ChainID is not set correct");
+        res.send(JSON.stringify({
+            error: {
+                code: 2,
+                message: "ChainID is not set correct"
+            }
+        }));
         return;
     }
 
@@ -96,7 +108,12 @@ app.post('/faucet', async function(req, res) {
     const transactionInput = await senderHttpProvider.getTransaction(requestBody.txID);
     if (transactionInput == null) {
         res.status(400);
-        res.send("Cannot find transaction with send txID");
+        res.send(JSON.stringify({
+            error: {
+                code: 3,
+                message: "Cannot find transaction with send txID"
+            }
+        }));
         return;
     }
     //console.log(transactionInput);
@@ -104,23 +121,47 @@ app.post('/faucet', async function(req, res) {
     // check confirmations number
     if (transactionInput.confirmations >= 500) {
         res.status(400);
-        res.send("There is more then 500 confirmations on this transaction");
+        res.send(JSON.stringify({
+            error: {
+                code: 4,
+                message: "There is more then 500 confirmations on this transaction"
+            }
+        }));
         return;
     }
 
     // get input data for transaction
-    const decodedInputData = interfaceERC677_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
+    let decodedInputData;
+    let functionDecodedName;
+    if (requestBody.isToken === true) {
+        decodedInputData = interfaceERC677_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
+        functionDecodedName = "transferAndCall";
+    } else {
+        decodedInputData = interfaceAMB_NATIVE_ERC_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
+        functionDecodedName = "relayTokens";
+    }
+
     if (decodedInputData == null) {
         res.status(400);
-        res.send("Cannot decode with send txID");
+        res.send(JSON.stringify({
+            error: {
+                code: 5,
+                message: "Cannot decode with send txID"
+            }
+        }));
         return;
     }
 
     // check is correct function name
     const functionName = decodedInputData.name;
-    if (functionName != "transferAndCall") {
+    if (functionName != functionDecodedName) {
         res.status(400).end();
-        res.send("txID is not good - function name isn't transferAndCall");
+        res.send(JSON.stringify({
+            error: {
+                code: 6,
+                message: "txID is not good - function name isn't " + functionDecodedName
+            }
+        }));
         return;
     }
 
@@ -136,7 +177,12 @@ app.post('/faucet', async function(req, res) {
     //console.log(mongoCollectionFind);
     if (mongoCollectionFind != null) {
         res.status(400);
-        res.send("This address already received amount from faucet");
+        res.send(JSON.stringify({
+            error: {
+                code: 7,
+                message: "This address already received amount from faucet"
+            }
+        }));
         return;
     }
 
@@ -147,19 +193,11 @@ app.post('/faucet', async function(req, res) {
     };
     await mongoCollection.insertOne(newAddressForInsert);
 
-    
-    /*console.log({
-        function_name: decodedInput.name,
-        from: transactionInput.from,
-        to: decodedInput.args[0],
-        erc20Value: Number(decodedInput.args[1])
-    });*/  
-
     // get elastos http provider
     const elastosHttpProvider = new ethers.providers.JsonRpcProvider(networkUrlElastos);
     const mnemonicWallet = ethers.Wallet.fromMnemonic(mnemonic).connect(elastosHttpProvider);
     const sendAccount = mnemonicWallet.getAddress();
-    
+      
     // prepare transaction
     const tx = {
         from: sendAccount,
@@ -170,11 +208,14 @@ app.post('/faucet', async function(req, res) {
     };
     
     // send transaction
-    const transactionForSend = await mnemonicWallet.sendTransaction(tx);
+    await mnemonicWallet.sendTransaction(tx);
 
-    //console.log(transactionForSend);
-
-    res.send('Ela is successful send');
+    res.send(JSON.stringify({
+        success: {
+            code: 1,
+            message: "Ela from bridge faucet is successful send"
+        }
+    }));
 });
 
 
