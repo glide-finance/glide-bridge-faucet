@@ -13,8 +13,8 @@ const port = 3001;
 const mnemonic = secrets.mnemonic;
 
 const networkUrlEthereum = "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161";
-const networkUrlHuobi = "https://http-mainnet-node.huobichain.com"; //  "https://api.elastos.io/eth";
-const networkUrlElastos = "https://api.elastos.io/eth";
+const networkUrlHuobi = "https://http-mainnet-node.huobichain.com"; 
+const networkUrlElastos = "https://api.elastos.io/eth"; // https://esc.elaphant.app
 
 const interfaceERC677_ABI = new ethers.utils.Interface(ERC677_ABI);
 const interfaceAMB_NATIVE_ERC_ABI = new ethers.utils.Interface(AMB_NATIVE_ERC_ABI);
@@ -55,7 +55,7 @@ app.get('/faucet/:address', async function(req, res) {
         };
     } else {
         var result = {
-            "has_use_faucet": true
+            "has_use_faucet": true // testing
         };
     }
 
@@ -67,12 +67,13 @@ app.get('/faucet/:address', async function(req, res) {
     txID: "0x0af252de1e65ad697e4a86c75b68b8dfc9b17d8f646fd39e28e6d132e367b2e6",
     chainID: 128, // 1 - eth, 128 - huobi
     address: "0x..123",
-    isToken: false/true
+    type: 'relayTokens' or 'transferAndCall'
 }
 */
+
 app.post('/faucet', async function(req, res) {
     const requestBody = req.body;
-
+    console.log(requestBody)
     // find networkURL from which is transfer start 
     var networkUrlSender;
     if (requestBody && requestBody.chainID) {
@@ -132,13 +133,11 @@ app.post('/faucet', async function(req, res) {
 
     // get input data for transaction
     let decodedInputData;
-    let functionDecodedName;
-    if (requestBody.isToken === true) {
+    let functionDecodedName = requestBody.type;
+    if (functionDecodedName === "transferAndCall") {
         decodedInputData = interfaceERC677_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
-        functionDecodedName = "transferAndCall";
     } else {
         decodedInputData = interfaceAMB_NATIVE_ERC_ABI.parseTransaction({ data: transactionInput.data, value: transactionInput.value});
-        functionDecodedName = "relayTokens";
     }
 
     if (decodedInputData == null) {
