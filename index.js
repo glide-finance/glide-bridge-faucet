@@ -54,9 +54,17 @@ app.get('/faucet/:address', async function(req, res) {
             "has_use_faucet": false
         };
     } else {
-        var result = {
-            "has_use_faucet": true // testing
-        };
+        const currentTime = Date.now();
+        // it passed one day, can be used
+        if (currentTime > mongoCollectionFind.timeUsed + 86400000) {
+            var result = {
+                "has_use_faucet": false
+            };
+        } else {
+            var result = {
+                "has_use_faucet": true // testing
+            };
+        }
     }
 
     res.json(result);
@@ -173,24 +181,35 @@ app.post('/faucet', async function(req, res) {
 
     // find is this address use faucet
     const mongoCollectionFind = await mongoCollection.findOne( { address: { $eq: transactionInput.from } } );
+    const currentTime = Date.now();
     //console.log(mongoCollectionFind);
     if (mongoCollectionFind != null) {
-        res.status(400);
-        res.send(JSON.stringify({
-            error: {
-                code: 7,
-                message: "This address already received amount from faucet"
-            }
-        }));
-        return;
+        // it not passed one day, cannot be used
+        if (currentTime <= mongoCollectionFind.timeUsed + 86400000) {
+            res.status(400);
+            res.send(JSON.stringify({
+                error: {
+                    code: 7,
+                    message: "This address already received amount from faucet"
+                }
+            }));
+            return;
+        } else {
+            await mongoCollection.updateOne(
+                { _id: mongoCollectionFind._id },
+                { $set: { timeUsed: currentTime }}
+            );
+        }
     }
-
-    // insert new address
-    const newAddressForInsert = {
-        "address": transactionInput.from,
-        "blockNumber": transactionInput.blockNumber,
-    };
-    await mongoCollection.insertOne(newAddressForInsert);
+    else {
+        // insert new address
+        const newAddressForInsert = {
+            "address": transactionInput.from,
+            "blockNumber": transactionInput.blockNumber,
+            "timeUsed": currentTime
+        };
+        await mongoCollection.insertOne(newAddressForInsert);
+    }
 
     // get elastos http provider
     const elastosHttpProvider = new ethers.providers.JsonRpcProvider(networkUrlElastos);
